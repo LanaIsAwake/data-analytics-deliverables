@@ -1,0 +1,206 @@
+---
+title: "Deliverable 3"
+author: "Lana R"
+date: "2026-10-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(knitr)
+library(naniar)
+library(corrplot)
+```
+
+```{r load-data}
+df <- read_csv("bedtime_screentime_sleep_debt.csv")
+glimpse(df)
+dim(df)
+```
+
+```{r}
+dictionary <- tibble(
+  Variable = names(df),
+  Description = c(
+    "Unique participant ID",
+    "Age in years",
+    "Gender (Female, Male, Non-Binary)",
+    "Type of job or occupation",
+    "Natural sleep preference (Morning Lark, Intermediate, Night Owl)",
+    "Minutes spent on the phone in bed before sleeping",
+    "App or content type used most at bedtime",
+    "Phone screen brightness at bedtime (%)",
+    "Whether a blue light filter was on (1 = yes, 0 = no)",
+    "Caffeine consumed after 5 PM (mg)",
+    "Minutes of physical activity",
+    "Minutes it took to fall asleep",
+    "Total hours of sleep",
+    "Percent of sleep spent in deep sleep",
+    "Percent of sleep spent in REM sleep",
+    "Number of times the morning alarm was snoozed",
+    "Fatigue felt the next day (1 = low, 10 = high)",
+    "Sleep debt level (Optimal Recovery, Mild Deficit, Moderate Debt, Severe Sleep Debt)"
+  ),
+  Type = c(
+    "Identifier (categorical)", "Numerical", "Categorical", "Categorical", "Categorical",
+    "Numerical", "Categorical", "Numerical", "Categorical (binary)", "Numerical",
+    "Numerical", "Numerical", "Numerical", "Numerical", "Numerical",
+    "Numerical (count)", "Numerical", "Categorical (ordered)"
+  )
+)
+kable(dictionary, caption = "Data Dictionary")
+```
+
+```{r}
+df <- df %>%
+  mutate(
+    gender = factor(gender),
+    occupation_type = factor(occupation_type),
+    chronotype = factor(chronotype, levels = c("Morning Lark", "Intermediate", "Night Owl")),
+    primary_bedtime_app = factor(primary_bedtime_app),
+    blue_light_filter_active = factor(blue_light_filter_active, labels = c("Off", "On")),
+    sleep_debt_category = factor(sleep_debt_category,
+      levels = c("Optimal Recovery", "Mild Deficit", "Moderate Debt", "Severe Sleep Debt"))
+  )
+summary(df)
+```
+
+### Summary Statistics
+
+```{R}
+ggplot(df, aes(x = total_sleep_hours)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Total Sleep Hours", x = "Hours", y = "Count")
+```
+
+##### This figure above showcases that sleep hours averages about 6.3 hours and ranges from 3.2 to 9.8. It’s roughly symmetric.
+
+```{R}
+ggplot(df, aes(x = bedtime_phone_minutes)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Bedtime Phone Use",
+       x = "Minutes on phone before sleep", y = "Count")
+```
+
+##### This figure ahove showcases that bedtime phone minutes ranges from 1 to 180 with a mean of about 59 and a median of about 51. It’s right-skewed (most people are under an hour, with a long tail up to 3 hours), so the mean is pulled above the median.
+
+```{R}
+ggplot(df, aes(x = sleep_latency_min)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Sleep Latency",
+       x = "Minutes to fall asleep", y = "Count")
+```
+
+##### This figure above showcases that the time to fall asleep is also right-skewed, centered near 38 minutes (median), with a mean of about 41. Only about 30% of participants fall asleep within 30 minutes, and about 14% take over an hour. This is a fairly long time to fall asleep overall.
+
+```{R}
+ggplot(df, aes(x = caffeine_post_5pm_mg)) +
+  geom_histogram(binwidth = 10, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Caffeine Intake After 5 PM",
+       x = "Caffeine (mg)", y = "Count")
+```
+
+##### This figure ahove showcases that caffeine after 5 PM is heavily right-skewed, and about 58% of people consumed none. You’ll see a huge spike at 0, so explain that it’s mostly “none” with a smaller group of consumers.
+
+```{R}
+ggplot(df, aes(x = next_day_fatigue_score)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Next-Day Fatigue Score",
+       x = "Fatigue score (1 = low, 10 = high)", y = "Count")
+```
+
+##### This figure above showcases that the fatigue score has a spike at 1 (about 2,100 people) and at 10 (about 300), which makes it look like the scale has a floor and a ceiling.
+
+```{R}
+ggplot(df, aes(x = screen_brightness_pct)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Screen Brightness",
+       x = "Brightness (%)", y = "Count")
+```
+
+##### This figure above showcases that the brightness is symmetric and bell-shaped, centered right around 55%, with a spread from 10% to 100%. Very few people are at the extremes (about 120 at 10% and about 130 at 100%). Most people use a medium brightness setting.
+
+```{R}
+ggplot(df, aes(x = physical_activity_min)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Physical Activity",
+       x = "Minutes of activity", y = "Count")
+```
+
+##### This figure above showcases that the activity is roughly symmetric with a slight right skew, centered around 35 minutes. Values range from 0 to 112 minutes, and about 470 participants recorded 0 minutes. Most people get a moderate amount of activity, with a small group being very active.
+
+```{R}
+ggplot(df, aes(x = deep_sleep_pct)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of Deep Sleep Percentage",
+       x = "Deep sleep (%)", y = "Count")
+```
+
+##### This figure above showcases that the this one is nearly bell-shaped, centered around 22% with a narrow spread (values mostly between about 18% and 26%). There’s very little variation compared to other features, so it may be less useful for separating people into groups.
+
+```{R}
+ggplot(df, aes(x = rem_sleep_pct)) +
+  geom_histogram(bins = 30, fill = "steelblue", color = "white") +
+  labs(title = "Distribution of REM Sleep Percentage",
+       x = "REM sleep (%)", y = "Count")
+```
+
+##### This figure above showcases that the REM is also symmetric and bell-shaped, centered around 19% and ranging from about 10% to 27%. Like deep sleep, it’s tightly clustered, with most people near the average.
+
+```{R}
+ggplot(df, aes(x = morning_alarm_snoozes)) +
+  geom_bar(fill = "steelblue") +
+  scale_x_continuous(breaks = 0:7) +
+  labs(title = "Distribution of Morning Alarm Snoozes",
+       x = "Number of snoozes", y = "Count")
+```
+
+##### This figure above showcases that the bar chart shows a count with a peak at 2 to 3 snoozes (about 1,870 and 1,860 people). About 755 people never hit snooze, and a small group (about 180) hit it 7 times. The shape is slightly right-skewed, with most people snoozing a few times.
+
+```{R}
+df %>% count(chronotype) %>% mutate(percent = round(n / sum(n) * 100, 1)) %>% kable()
+
+ggplot(df, aes(x = sleep_debt_category)) +
+  geom_bar(fill = "coral") +
+  labs(title = "Participants by Sleep Debt Category", x = NULL, y = "Count")
+```
+
+##### This figure above showcases that the sleep debt category is mostly Moderate Debt (about 4,460 of 8,500), with Severe Sleep Debt the smallest group (about 650).
+
+```{r}
+# Missing values
+colSums(is.na(df))
+gg_miss_var(df)
+
+# Duplicates
+sum(duplicated(df))
+sum(duplicated(df$user_id))
+
+# Spelling / inconsistent categories
+lapply(df %>% select(where(is.factor)), levels)
+
+# Impossible values
+df %>% summarise(min_age = min(age), max_age = max(age),
+                 min_sleep = min(total_sleep_hours), max_sleep = max(total_sleep_hours))
+
+
+```
+
+```{R}
+num_df <- df %>% select(where(is.numeric)) 
+cor_matrix <- cor(num_df)
+corrplot(cor_matrix, method = "color", type = "upper",
+         addCoef.col = "black", number.cex = 0.6, tl.cex = 0.8)
+
+```
+
+##### There are no null or NA cells in any of the 18 columns across all 8,500 rows, and I didn’t need to remove any observations because there were no duplicate rows or IDs and every value fell within a plausible range. The categories are all spelled consistently, so nothing needed correcting, though a few variables are hard to interpret without documentation, such as how sleep_debt_category is defined, what the fatigue score measures, and whether each row is a single night or an average. Several features are strongly correlated, including phone time before bed with sleep latency (about +0.86), total sleep hours with next-day fatigue (about −0.88), and alarm snoozes with fatigue (about +0.88), though correlation doesn’t show that one causes the other.
+
+## Discussion
+
+Overall, this dataset gives a clear and fairly complete picture of how bedtime phone habits relate to sleep. It has 8,500 participants and 18 features, with no missing values, no duplicates, and no spelling problems. In general, people in this sample are not getting much sleep: the average is about 6.3 hours, and roughly 42% sleep fewer than 6 hours. Several of the most interesting findings involve phone use. People spend about 59 minutes on their phone in bed on average, but the distribution is right-skewed, with some using their phones for up to 3 hours. Bedtime phone minutes are strongly correlated with sleep latency (about +0.86), meaning more phone time goes with taking longer to fall asleep, and moderately correlated with total sleep hours (about −0.55). Other patterns stood out as well. Night Owls average about 5.0 hours of sleep compared with about 7.4 for Morning Larks, and shift workers average about 5.0 hours while the other occupation groups sit near 6.4. Also, the type of app used at bedtime seemed to make almost no difference in phone time or sleep hours, and the blue light filter showed only a small difference in sleep latency (about 39.6 vs. 41.6 minutes).
+
+I also have some concerns about the data. The file has no documentation, so I’m unsure how some variables were measured or defined. For example, I don’t know whether the sleep and fatigue values are self-reported or tracked by a device, whether each row is a single night or an average, or how sleep_debt_category was assigned. It appears to be closely tied to total sleep hours, which means it shouldn’t be treated as an independent variable. Several variables, such as alarm snoozes, fatigue, and sleep latency, are strongly correlated with each other and look more like effects of poor sleep than causes, so I’ll need to be careful about which ones I treat as predictors. A data set this clean is unusual for real survey data, so I’m also uncertain how it was collected and whether it represents a wider population. The sample also skews young (about 45% are 30 or younger) and includes only about 250 Non-Binary participants, which limits how far some comparisons can go. Finally, since these are correlations, I can’t conclude that phone use causes worse sleep.
+
+For next steps, I plan to compare sleep outcomes across groups, especially chronotype and occupation, since they showed the largest differences and may confound the effect of phone use. I also want to look at scatter plots and group comparisons of bedtime phone minutes against sleep latency and total sleep hours, and then check whether that relationship holds within each chronotype and occupation, to see whether phone use matters on its own or mostly reflects who the person is. After that, I’d like to see whether factors like caffeine, screen brightness, and the blue light filter add anything beyond phone time. These steps fit my main question of how screen time before bed affects sleep, and they would show which relationships are worth modeling later in the semester.
